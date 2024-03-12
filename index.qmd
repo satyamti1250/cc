@@ -1,0 +1,434 @@
+---
+
+title: "Inflation & Unemployment"
+author: "Aditi Soni & Satyam Tiwari"
+format: revealjs
+editor: source
+toc: true
+toc-depth: 1
+slide-number: true
+smaller: false
+scrollable: true 
+editor_options: 
+  chunk_output_type: console
+---
+
+::: {.hidden}
+$$
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\newcommand\mcy{{\bf y}}
+$$
+:::
+
+```{r, include=FALSE}
+library(forecast)
+library(fpp3)
+library(tidyverse)
+library(tsbox)
+library(zoo)
+library(seasonal)
+library(astsa)
+library(patchwork)
+library(tseries)
+
+
+
+library(dplyr)
+library(fredr)
+library(ggplot2)
+library(forecast)
+library(tseries)
+library(urca)
+library(tidyverse)
+library(readxl)
+library(forecast)
+library(dlm)
+library(vars)
+```
+
+```{r setup, include=FALSE}
+# Set up chunk for all slides
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  cache = TRUE,
+  dev.args = list(pointsize = 11)
+)
+```
+
+
+# ---- The Data 
+
+## Introduction to the Data 
+
+- We created a Bivariate series using 
+
+1- Inflation Data
+
+2- Unemployment Data 
+
+Inflation and unemployment have traditionally had an inverse relationship. When one rises, the other drops and vice versa. Governments typically rely on monetary and fiscal policies in order to keep the economy from overstimulating or from slowing it down too much.
+
+## Acquiring the Data
+
+```{r}
+fredr_set_key("619954596c335c6cd3c4fc1f7a346118")
+
+cpi <- fredr(series_id = "CPIAUCSL") 
+
+
+cpi$date <- as.Date(cpi$date)
+
+cpi_filtered <- cpi[cpi$date >= as.Date("1948-01-01"), ]
+
+
+unemp  <- fredr(series_id = "UNRATE") 
+
+unemp$date <- as.Date(unemp$date)
+unemp_filterd <- unemp[unemp$date <= as.Date("2024-01-01"), ]
+
+
+merged_data <- merge(cpi_filtered, unemp_filterd, by = "date")
+
+```
+
+## Looking at the data
+
+- We acquired both the series from fred.
+- They are both month, seasoally adjusted data.
+- Inflation had one extra value for 1948-01-01.
+- unemployment had one extra value for 2024-01-01. 
+- Both the extra values were filtered out.
+- We then merged the clean data all ready to use. 
+
+## Plotting the data
+
+
+```{r}
+ggplot(cpi_filtered, aes(x = date, y = value)) +
+  geom_line() +
+  labs(title = "inflation",
+       x = "Year",
+       y = "Number")
+ggplot(unemp_filterd, aes(x = date, y = value)) +
+  geom_line() +
+  labs(title = "Unemployment Rate ",
+       x = "Year",
+       y = "Number")
+```
+
+# ----Analysing The Data 
+
+From a simple look at the plots it is clearly visible that while Inflation follow a pretty much consistent upward trend. It is not the same with Unemployment Rate which maintains itself pretty well, it was severely affected during the Covid period and we see a heavy spike, although Unemployement rate continues to be quite high but we cannot let the data from the covid period affect our forecast, so we will try to remedy it in some way. 
+
+
+
+## Visualising the data that needs to be remedied 
+
+We try to have a look at the unemployement data and try to find the best selection for start and end dates for the spike using visualisation
+
+#
+```{r}
+start_date <- as.Date("2020-03-01")
+end_date <- as.Date("2021-06-30")
+
+
+
+ggplot(unemp_filterd, aes(x = date, y = value)) +
+  geom_line() +
+  geom_vline(xintercept = as.numeric(start_date), linetype = "dashed", color = "red") +
+  geom_vline(xintercept = as.numeric(end_date), linetype = "dashed", color = "red") +
+  labs(title = "Unemployment rate Marking the Covid period ",
+       x = "Year",
+       y = "Number")
+
+```
+
+## Smoothing the covid data by fitting a spline 
+
+-We fit a spline on the non-covid data and then we impute covid values using the same, multiple values of lambda were tried selected the best one
+
+```{r}
+#Filter covid data out 
+non_covid_data <- unemp_filterd %>%
+  filter(date < start_date | date > end_date)
+
+#Fitted spline on non-covid data 
+spline_fit <- smooth.spline(x = as.numeric(non_covid_data$date), y = non_covid_data$value,lambda = 0.7)
+
+#filtered covid set 
+covid_period_data <- unemp_filterd %>%
+  filter(date >= start_date & date <= end_date)
+
+#impute new values 
+imputed_values <- predict(spline_fit, x = as.numeric(covid_period_data$date))
+
+covid_period_data$value <- imputed_values$y
+```
+
+
+## Visualising the new data 
+
+```{r}
+updated_unemp_data <- bind_rows(non_covid_data, imputed_values)
+
+#updated_icnsa_data <- updated_icnsa_data %>%
+ # filter(date < Sys.Date())
+
+
+ggplot(updated_unemp_data, aes(x = date, y = value)) +
+  geom_line() +
+  labs(title = "Claims",
+       x = "Year",
+       y = "Number")
+```
+
+## Having a look at the new complete data 
+
+```{r}
+#| output-location: slide
+library(ggplot2)
+
+p1 <- ggplot(merged_data, aes(x = date)) + 
+  geom_line(aes(y = cpi_filtered$value, color = "CPI")) +
+  labs(y = "CPI / Unemployment Rate", color = "Series") +
+  theme_minimal()
+
+p2 <- p1 + geom_line(aes(y = updated_unemp_data$value, color = "Unemployment Rate"))
+
+final_plot <- p2 + scale_y_continuous(sec.axis = sec_axis(~., name = "Unemployment Rate"))
+
+print(final_plot)
+
+```
+
+
+
+
+# ---- Dealing with Stationary Data
+
+
+```{r}
+#| output-location: slide
+
+cpi_ts <- ts(merged_data$value.x, frequency = 12)
+unemp_ts <- ts(merged_data$value.y, frequency = 12)
+unemp_ts_adjusted <- unemp_ts[-1]
+
+
+acf(cpi_ts)
+
+```
+#
+
+```{r}
+pacf(cpi_ts)
+
+```
+#
+```{r}
+adf_result_cpi <- adf.test(cpi_ts)
+adf_result_cpi
+
+```
+
+##
+- The ACF plot shows a slow decay, which usually indicates a non-stationary series.
+- The PACF plot does not have a clear cutoff point after a few lags, which suggests that the data could be non-stationary
+- Augmented Dickey-Fuller (ADF) test resulted in a value of -1.0215 with a high p-value of 0.9353, which suggests that the series is not stationary.
+
+#
+
+- We now apply differencing and re-test 
+```{r}
+
+cpi_ts_diff <- diff(cpi_ts, differences = 1)
+acf(cpi_ts_diff)
+```
+#
+```{r}
+pacf(cpi_ts_diff)
+```
+#
+```{r}
+adf_result_cpi_diff <- adf.test(cpi_ts_diff)
+adf_result_cpi_diff
+```
+
+#
+- The ACF plot now shows a significant spike at lag 1 and then cuts off,  In the PACF plot, we see no significant spikes extending beyond the blue confidence interval lines, which implies there are no significant partial correlations at lags beyond the first few.
+
+- The Augmented Dickey-Fuller test that suggested stationarity,
+
+- Looks like a simple ARIMA(0,1,0) model could be appropriate 
+
+
+
+#
+- the second series was found to be stationary 
+```{r}
+acf(unemp_ts)
+```
+#
+```{r}
+pacf(unemp_ts)
+```
+#
+```{r}
+adf_result_unemp <- adf.test(unemp_ts)
+adf_result_unemp
+```
+
+- The ACF plot does displays a slow decay, which often suggests non-stationarity, and the PACF plot has significant spikes at early lags and then dies out, which can indicate a possible AR process. 
+
+- However, the Augmented Dickey-Fuller test result gives a value of -3.9142 with a p-value of 0.01328, so we can reject the null hypothes and conclude that it is stationary.
+
+# ---- Modelling the Data 
+
+
+```{r}
+
+unemp_ts_adjusted <- unemp_ts[-1]
+
+final_model <- auto.arima(cpi_ts_diff, xreg = unemp_ts_adjusted)
+summary(final_model)
+```
+#
+```{r}
+checkresiduals(final_model)
+```
+
+
+#
+- The residuals do not display any obvious patterns or trends.
+- The ACF of the residuals doesn't show significant autocorrelation at most lags.
+- The histogram of the residuals that they are approximately normally distributed.
+- Auto Arima choose - ARIMA(0,1,4)(0,0,2)[12]
+- The error terms are not bad suggesting the model has an acceptable forecasting accurarcy
+
+## regarima forecast
+
+
+```{r}
+
+forecast_values <- forecast(final_model, xreg = unemp_ts_adjusted, h=1)
+
+single_forecast <- forecast_values$mean[1]
+
+last_value <- tail(cpi_filtered$value, n=1)
+forecasted_original_value <- last_value + single_forecast
+
+
+cat ("Next predicted value is ", forecasted_original_value)
+```
+
+## Second model
+
+
+```{r}
+#| output-location: slide
+data_var <- cbind(cpi_ts_diff, unemp_ts_adjusted)
+
+data_var <- as.data.frame(data_var)
+
+
+var_model <- VAR(data_var, type = "both", ic = "AIC")
+
+summary(var_model)
+
+```
+
+#
+```{r}
+
+serial.test(var_model, lags.pt = 16, type = "PT.asymptotic")
+```
+
+#
+- Why this model?
+
+We chose it for its ability to model and forecast interlinked time series.
+Here it captures the relationship between two time series: the differenced Consumer Price Index (CPI) and an adjusted unemployment series. 
+
+
+- Model Selection: The AIC criterion was used to determine the optimal lag structure, suggesting a balance between model complexity and fit.
+- Model Coefficients: The cpi_ts_diff.l1 coefficient indicates that past values of CPI changes are significant in predicting future changes. However, the unemp_ts_adjusted.l1 coefficient in the CPI equation is not significant, suggesting that past unemployment rates might not be a strong predictor for CPI changes.
+- Model Fit: The "Residual standard error" quantifies the average error made by the model when predicting the CPI, and with 907 degrees of freedom, this suggests the model is based on a large sample, giving us more confidence in the error estimate.
+- Diagnostic Tests: The Portmanteau test result indicates autocorrelation in residuals, which is a concern and suggests the model may not fully capture the dynamics in the data as stated by the low p-value.
+
+- Covariance & Corelation: The covariance between the two indicates a slight inverse relationship, meaning when one increases, the other tends to decrease slightly, but the correlation is weak, showing this relationship isn't strong.
+
+To summarise, while the model seems to fit past data well in terms of capturing the relationship between CPI and unemployment, the Portmanteau test suggests that it could be improved to better capture the dynamics and reduce residual autocorrelation.
+#
+```{r}
+
+forecast_values_var <- predict(var_model, n.ahead = 1)
+forecast_values_var$fcst$cpi_ts <- forecast_values_var$fcst$cpi_ts + last_value
+print(forecast_values_var$fcst$cpi_ts)
+```
+
+-Forecast: The model's forecast offers a prediction for the CPI change, with confidence intervals providing a range where the true future value is likely to lie.
+
+
+# ---- Cross Validation
+
+```{r}
+#| output-location: slide
+n <- length(cpi_ts_diff)
+test_size <- 120  
+n_splits <- n - test_size  
+
+results <- data.frame(split = integer(n_splits), regarima_mae = double(n_splits), var_mae = double(n_splits))
+
+for(i in 1:n_splits) {
+  
+  train_end_index <- i + test_size - 1
+  cpi_train <- cpi_ts_diff[1:train_end_index]
+  cpi_test <- cpi_ts_diff[(train_end_index+1):(train_end_index+1)]
+  unemp_train <- unemp_ts_adjusted[1:train_end_index]
+  unemp_test <- unemp_ts_adjusted[(train_end_index+1):(train_end_index+1)]
+  
+  regarima_model <- auto.arima(cpi_train, xreg = unemp_train)
+  regarima_forecast <- forecast(regarima_model, xreg = unemp_test, h = 1)
+  regarima_mae <- mean(abs(regarima_forecast$mean - cpi_test))
+  
+
+  data_var <- cbind(cpi_ts_diff = cpi_train, unemp_ts_adjusted = unemp_train)
+  var_model <- VAR(data_var, type = "both", ic = "AIC")
+  var_forecast <- predict(var_model, n.ahead = 1)
+  
+  var_forecasted_cpi_diff <- var_forecast$fcst$cpi_ts_diff[1, "fcst"]
+  var_mae <- mean(abs(var_forecasted_cpi_diff - cpi_test))
+  
+  
+  results$split[i] <- i
+  results$regarima_mae[i] <- regarima_mae
+  results$var_mae[i] <- var_mae
+}
+
+
+mean_regarima_mae <- mean(results$regarima_mae)
+mean_var_mae <- mean(results$var_mae)
+cat("Mean REGARIMA MAE:", mean_regarima_mae, "\n")
+cat("Mean VAR MAE:", mean_var_mae, "\n")
+
+```
+#
+-It would be safe to say that both the models have performed pretty simiarly with respect to forecasting 
+
+## Practical implications 
+
+Forecasting the Consumer Price Index (CPI) is significant for both economists and policymakers. The CPI is a measure that examines the weighted average of prices of a basket of consumer goods and services, such as transportation, food, and medical care. An accurate forecast can:
+
+- Inflation Tracking: Help predict inflation trends, which is critical for central banks to set interest rates and for government fiscal policy.
+
+- Economic Policy: Inform policymakers in designing economic policies, such as adjusting tax brackets, social security benefits, and pension payouts.
+
+- Business Planning: Aid businesses in pricing, budgeting, and planning. If inflation is expected to rise, companies may adjust wages, prices, and investment strategies.
+
+- Investment Decisions: Investors use CPI forecasts to make decisions about stocks, bonds, and other investments. For instance, higher inflation may lead to higher interest rates, affecting stock and bond prices.
+
+

@@ -1,0 +1,100 @@
+[
+  {
+    "objectID": "index.html#introduction-to-the-data",
+    "href": "index.html#introduction-to-the-data",
+    "title": "demosite",
+    "section": "Introduction to the Data",
+    "text": "Introduction to the Data\n\nWe created a Bivariate series using\n\n1- Inflation Data\n2- Unemployment Data\nInflation and unemployment have traditionally had an inverse relationship. When one rises, the other drops and vice versa. Governments typically rely on monetary and fiscal policies in order to keep the economy from overstimulating or from slowing it down too much."
+  },
+  {
+    "objectID": "index.html#acquiring-the-data",
+    "href": "index.html#acquiring-the-data",
+    "title": "demosite",
+    "section": "Acquiring the Data",
+    "text": "Acquiring the Data\n\nfredr_set_key(\"619954596c335c6cd3c4fc1f7a346118\")\n\ncpi &lt;- fredr(series_id = \"CPIAUCSL\") \n\n\ncpi$date &lt;- as.Date(cpi$date)\n\ncpi_filtered &lt;- cpi[cpi$date &gt;= as.Date(\"1948-01-01\"), ]\n\n\nunemp  &lt;- fredr(series_id = \"UNRATE\") \n\nunemp$date &lt;- as.Date(unemp$date)\nunemp_filterd &lt;- unemp[unemp$date &lt;= as.Date(\"2024-01-01\"), ]\n\n\nmerged_data &lt;- merge(cpi_filtered, unemp_filterd, by = \"date\")"
+  },
+  {
+    "objectID": "index.html#looking-at-the-data",
+    "href": "index.html#looking-at-the-data",
+    "title": "demosite",
+    "section": "Looking at the data",
+    "text": "Looking at the data\n\nWe acquired both the series from fred.\nThey are both month, seasoally adjusted data.\nInflation had one extra value for 1948-01-01.\nunemployment had one extra value for 2024-01-01.\nBoth the extra values were filtered out.\nWe then merged the clean data all ready to use."
+  },
+  {
+    "objectID": "index.html#plotting-the-data",
+    "href": "index.html#plotting-the-data",
+    "title": "demosite",
+    "section": "Plotting the data",
+    "text": "Plotting the data\n\nggplot(cpi_filtered, aes(x = date, y = value)) +\n  geom_line() +\n  labs(title = \"inflation\",\n       x = \"Year\",\n       y = \"Number\")\n\n\n\n\n\n\n\nggplot(unemp_filterd, aes(x = date, y = value)) +\n  geom_line() +\n  labs(title = \"Unemployment Rate \",\n       x = \"Year\",\n       y = \"Number\")"
+  },
+  {
+    "objectID": "index.html#visualising-the-data-that-needs-to-be-remedied",
+    "href": "index.html#visualising-the-data-that-needs-to-be-remedied",
+    "title": "demosite",
+    "section": "Visualising the data that needs to be remedied",
+    "text": "Visualising the data that needs to be remedied\nWe try to have a look at the unemployement data and try to find the best selection for start and end dates for the spike using visualisation"
+  },
+  {
+    "objectID": "index.html#smoothing-the-covid-data-by-fitting-a-spline",
+    "href": "index.html#smoothing-the-covid-data-by-fitting-a-spline",
+    "title": "demosite",
+    "section": "Smoothing the covid data by fitting a spline",
+    "text": "Smoothing the covid data by fitting a spline\n-We fit a spline on the non-covid data and then we impute covid values using the same, multiple values of lambda were tried selected the best one\n\n#Filter covid data out \nnon_covid_data &lt;- unemp_filterd %&gt;%\n  filter(date &lt; start_date | date &gt; end_date)\n\n#Fitted spline on non-covid data \nspline_fit &lt;- smooth.spline(x = as.numeric(non_covid_data$date), y = non_covid_data$value,lambda = 0.7)\n\n#filtered covid set \ncovid_period_data &lt;- unemp_filterd %&gt;%\n  filter(date &gt;= start_date & date &lt;= end_date)\n\n#impute new values \nimputed_values &lt;- predict(spline_fit, x = as.numeric(covid_period_data$date))\n\ncovid_period_data$value &lt;- imputed_values$y"
+  },
+  {
+    "objectID": "index.html#visualising-the-new-data",
+    "href": "index.html#visualising-the-new-data",
+    "title": "demosite",
+    "section": "Visualising the new data",
+    "text": "Visualising the new data\n\nupdated_unemp_data &lt;- bind_rows(non_covid_data, imputed_values)\n\n#updated_icnsa_data &lt;- updated_icnsa_data %&gt;%\n # filter(date &lt; Sys.Date())\n\n\nggplot(updated_unemp_data, aes(x = date, y = value)) +\n  geom_line() +\n  labs(title = \"Claims\",\n       x = \"Year\",\n       y = \"Number\")"
+  },
+  {
+    "objectID": "index.html#having-a-look-at-the-new-complete-data",
+    "href": "index.html#having-a-look-at-the-new-complete-data",
+    "title": "demosite",
+    "section": "Having a look at the new complete data",
+    "text": "Having a look at the new complete data\n\nlibrary(ggplot2)\n\np1 &lt;- ggplot(merged_data, aes(x = date)) + \n  geom_line(aes(y = cpi_filtered$value, color = \"CPI\")) +\n  labs(y = \"CPI / Unemployment Rate\", color = \"Series\") +\n  theme_minimal()\n\np2 &lt;- p1 + geom_line(aes(y = updated_unemp_data$value, color = \"Unemployment Rate\"))\n\nfinal_plot &lt;- p2 + scale_y_continuous(sec.axis = sec_axis(~., name = \"Unemployment Rate\"))\n\nprint(final_plot)"
+  },
+  {
+    "objectID": "index.html#having-a-look-at-the-new-complete-data-output",
+    "href": "index.html#having-a-look-at-the-new-complete-data-output",
+    "title": "demosite",
+    "section": "Having a look at the new complete data",
+    "text": "Having a look at the new complete data"
+  },
+  {
+    "objectID": "index.html#section-3",
+    "href": "index.html#section-3",
+    "title": "demosite",
+    "section": "",
+    "text": "The ACF plot shows a slow decay, which usually indicates a non-stationary series.\nThe PACF plot does not have a clear cutoff point after a few lags, which suggests that the data could be non-stationary\nAugmented Dickey-Fuller (ADF) test resulted in a value of -1.0215 with a high p-value of 0.9353, which suggests that the series is not stationary."
+  },
+  {
+    "objectID": "index.html#regarima-forecast",
+    "href": "index.html#regarima-forecast",
+    "title": "demosite",
+    "section": "regarima forecast",
+    "text": "regarima forecast\n\nforecast_values &lt;- forecast(final_model, xreg = unemp_ts_adjusted, h=1)\n\nsingle_forecast &lt;- forecast_values$mean[1]\n\nlast_value &lt;- tail(cpi_filtered$value, n=1)\nforecasted_original_value &lt;- last_value + single_forecast\n\n\ncat (\"Next predicted value is \", forecasted_original_value)\n\nNext predicted value is  310.6297"
+  },
+  {
+    "objectID": "index.html#second-model",
+    "href": "index.html#second-model",
+    "title": "demosite",
+    "section": "Second model",
+    "text": "Second model\n\ndata_var &lt;- cbind(cpi_ts_diff, unemp_ts_adjusted)\n\ndata_var &lt;- as.data.frame(data_var)\n\n\nvar_model &lt;- VAR(data_var, type = \"both\", ic = \"AIC\")\n\nsummary(var_model)"
+  },
+  {
+    "objectID": "index.html#second-model-output",
+    "href": "index.html#second-model-output",
+    "title": "demosite",
+    "section": "Second model",
+    "text": "Second model\n\n\nVAR Estimation Results:\n========================= \nEndogenous variables: cpi_ts_diff, unemp_ts_adjusted \nDeterministic variables: both \nSample size: 911 \nLog Likelihood: -872.682 \nRoots of the characteristic polynomial:\n0.9669 0.5281\nCall:\nVAR(y = data_var, type = \"both\", ic = \"AIC\")\n\n\nEstimation results for equation cpi_ts_diff: \n============================================ \ncpi_ts_diff = cpi_ts_diff.l1 + unemp_ts_adjusted.l1 + const + trend \n\n                       Estimate Std. Error t value Pr(&gt;|t|)    \ncpi_ts_diff.l1        5.273e-01  2.833e-02  18.617  &lt; 2e-16 ***\nunemp_ts_adjusted.l1  3.146e-03  7.422e-03   0.424    0.672    \nconst                -1.193e-02  4.587e-02  -0.260    0.795    \ntrend                 3.127e-04  5.186e-05   6.030 2.38e-09 ***\n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n\nResidual standard error: 0.3755 on 907 degrees of freedom\nMultiple R-Squared: 0.3759, Adjusted R-squared: 0.3739 \nF-statistic: 182.1 on 3 and 907 DF,  p-value: &lt; 2.2e-16 \n\n\nEstimation results for equation unemp_ts_adjusted: \n================================================== \nunemp_ts_adjusted = cpi_ts_diff.l1 + unemp_ts_adjusted.l1 + const + trend \n\n                       Estimate Std. Error t value Pr(&gt;|t|)    \ncpi_ts_diff.l1       -1.039e-01  3.127e-02  -3.322 0.000930 ***\nunemp_ts_adjusted.l1  9.677e-01  8.194e-03 118.095  &lt; 2e-16 ***\nconst                 1.814e-01  5.064e-02   3.583 0.000358 ***\ntrend                 7.782e-05  5.725e-05   1.359 0.174421    \n---\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n\nResidual standard error: 0.4146 on 907 degrees of freedom\nMultiple R-Squared: 0.9414, Adjusted R-squared: 0.9412 \nF-statistic:  4854 on 3 and 907 DF,  p-value: &lt; 2.2e-16 \n\n\n\nCovariance matrix of residuals:\n                  cpi_ts_diff unemp_ts_adjusted\ncpi_ts_diff           0.14101          -0.02719\nunemp_ts_adjusted    -0.02719           0.17185\n\nCorrelation matrix of residuals:\n                  cpi_ts_diff unemp_ts_adjusted\ncpi_ts_diff            1.0000           -0.1747\nunemp_ts_adjusted     -0.1747            1.0000"
+  },
+  {
+    "objectID": "index.html#practical-implications",
+    "href": "index.html#practical-implications",
+    "title": "demosite",
+    "section": "Practical implications",
+    "text": "Practical implications\nForecasting the Consumer Price Index (CPI) is significant for both economists and policymakers. The CPI is a measure that examines the weighted average of prices of a basket of consumer goods and services, such as transportation, food, and medical care. An accurate forecast can:\n\nInflation Tracking: Help predict inflation trends, which is critical for central banks to set interest rates and for government fiscal policy.\nEconomic Policy: Inform policymakers in designing economic policies, such as adjusting tax brackets, social security benefits, and pension payouts.\nBusiness Planning: Aid businesses in pricing, budgeting, and planning. If inflation is expected to rise, companies may adjust wages, prices, and investment strategies.\nInvestment Decisions: Investors use CPI forecasts to make decisions about stocks, bonds, and other investments. For instance, higher inflation may lead to higher interest rates, affecting stock and bond prices."
+  }
+]
